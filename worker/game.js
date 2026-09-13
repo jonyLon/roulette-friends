@@ -9,14 +9,14 @@ export function tick(s,now=Date.now()){
  s.ledger??=[];
  if(!s.turn){s.turn=s.host??s.players[0]?.id;s.turnStarted=now;}
  // Safely migrate unfinished scripted rounds without announcing a fabricated number.
- if(s.phase==='spinning'&&s.spin?.engine!==ENGINE_VERSION){for(const p of s.players){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Повернення після оновлення',now);p.bets=[];}s.spin=null;s.phase='betting';s.result=null;}
+ if(s.phase==='spinning'&&![ENGINE_VERSION,'rapier-0.19.3-roulette-v1'].includes(s.spin?.engine)){for(const p of s.players){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Повернення після оновлення',now);p.bets=[];}s.spin=null;s.phase='betting';s.result=null;}
  if(s.phase==='betting')for(const p of s.players)if(p.id!==s.turn&&p.bets.length){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Повернення: гра по черзі',now);p.bets=[];}
  if(s.phase==='spinning'&&now>s.spin.startedAt+100000){for(const p of s.players){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Крутку перервано: повернення',now);p.bets=[];}s.phase='result';s.result=null;s.last=[];s.advanceAt=now+5000;}
  if(s.phase==='result'&&s.advanceAt&&now>=s.advanceAt)advance(s,now);
  if(s.phase==='betting'&&now-s.turnStarted>120000&&s.players.length>1){const p=s.players.find(p=>p.id===s.turn);change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Час ходу вичерпано: повернення',now);p.bets=[];advance(s,now);}
 }
 function validateProof(s,proof,now){
- if(proof?.engine!==ENGINE_VERSION||!Number.isInteger(proof.step)||proof.step<120||proof.step>9000||(!Number.isInteger(proof.stable)||proof.stable<120))throw Error('Кулька ще не зупинилась.');
+ if(![ENGINE_VERSION,'rapier-0.19.3-roulette-v1'].includes(proof?.engine)||!Number.isInteger(proof.step)||proof.step<120||proof.step>9000||(!Number.isInteger(proof.stable)||proof.stable<120))throw Error('Кулька ще не зупинилась.');
  if(now<s.spin.startedAt+proof.step*DT*1000-500)throw Error('Фізична крутка ще триває.');
  for(const k of ['ballSpeed','ballAngularSpeed','wheelSpeed'])if(!Number.isFinite(proof[k])||proof[k]<0)throw Error('Некоректна швидкість.');
  if(proof.ballSpeed>=.008||proof.ballAngularSpeed>=.15||proof.wheelSpeed>=.006)throw Error('Дочекайтеся повної зупинки.');
