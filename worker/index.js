@@ -1,4 +1,4 @@
-import { freshRoom, act, publicState } from './game.js';
+import { freshRoom, act, publicState, tick } from './game.js';
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 export default {async fetch(request,env){
  const url=new URL(request.url);if(!url.pathname.startsWith('/api/')){return env.ASSETS.fetch(request);}
@@ -16,7 +16,7 @@ export default {async fetch(request,env){
  for(let attempt=0;attempt<10;attempt++){
  const row=await db.prepare('SELECT state,version FROM rooms WHERE code=?').bind(code).first();if(!row)return json({error:'Кімнату не знайдено. Перевірте код.'},404);
  const s=JSON.parse(row.state);
- if(body)act(s,token,body);else {if(!s.players.some(p=>p.token===token))return json({error:'Увійдіть до кімнати.'},401);if(s.phase==='spinning'&&Date.now()>=s.ends){act(s,token,{action:'join'});}else return json(publicState(s,token));}
+ if(body)act(s,token,body);else {if(!s.players.some(p=>p.token===token))return json({error:'Увійдіть до кімнати.'},401);const before=JSON.stringify(s);tick(s);if(before===JSON.stringify(s))return json(publicState(s,token));}
  const r=await db.prepare('UPDATE rooms SET state=?,version=version+1 WHERE code=? AND version=?').bind(JSON.stringify(s),code,row.version).run();if(r.meta.changes)return json(publicState(s,token));
  }return json({error:'Кімната зайнята. Спробуйте ще раз.'},409);
  }catch(e){console.error(e);return json({error:e.message||'Не вдалося з’єднатися з кімнатою.'},400);}

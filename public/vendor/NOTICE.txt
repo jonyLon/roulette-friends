@@ -1,0 +1,2 @@
+Rapier 3D 0.19.3 — Dimforge — Apache-2.0
+https://github.com/dimforge/rapier.js
