@@ -50,7 +50,8 @@ function render(){
 }
 const canvas=$('wheel'),ctx=canvas.getContext('2d'),tau=Math.PI*2,SCALE=380;
 let lastDrawnFrame=null;
-const walnut=new Image(),woodLayer=document.createElement('canvas');
+const walnut=new Image(),woodLayer=document.createElement('canvas'),centerWoodLayer=document.createElement('canvas');
+centerWoodLayer.width=430;centerWoodLayer.height=430;
 woodLayer.width=900;woodLayer.height=900;let woodReady=false;
 walnut.onload=()=>{
  const c=woodLayer.getContext('2d');c.translate(450,450);c.save();
@@ -60,7 +61,14 @@ walnut.onload=()=>{
  sheen.addColorStop(0,'#fff5db00');sheen.addColorStop(.22,'#fff1d22e');sheen.addColorStop(.38,'#fff9df07');sheen.addColorStop(.65,'#09040116');sheen.addColorStop(1,'#09040166');
  c.fillStyle=sheen;c.fillRect(-408,-408,816,816);
  const depth=c.createRadialGradient(0,0,290,0,0,408);depth.addColorStop(0,'#160a06a6');depth.addColorStop(.18,'#160a0619');depth.addColorStop(.65,'#160a0600');depth.addColorStop(1,'#160a0655');c.fillStyle=depth;c.fillRect(-408,-408,816,816);
- c.restore();woodReady=true;draw(lastDrawnFrame);
+ c.restore();
+ const center=centerWoodLayer.getContext('2d');center.translate(215,215);center.save();
+ center.beginPath();center.arc(0,0,214,0,tau);center.clip();
+ center.drawImage(walnut,-260,-260,520,520);
+ const polish=center.createRadialGradient(-65,-75,5,0,0,214);
+ polish.addColorStop(0,'#ffe4ab38');polish.addColorStop(.5,'#edc2850a');polish.addColorStop(1,'#160a0670');
+ center.fillStyle=polish;center.fillRect(-214,-214,428,428);center.restore();
+ woodReady=true;draw(lastDrawnFrame);
 };
 walnut.src='/walnut-wood.png';
 function circle(r,fill,stroke,width=1){ctx.beginPath();ctx.arc(0,0,r,0,tau);ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=width;ctx.stroke();}}
@@ -74,7 +82,7 @@ function draw(frame){
  for(const d of GEOMETRY.deflectors){ctx.save();ctx.translate(d.position[0]*SCALE,d.position[2]*SCALE);const q=d.rotation;ctx.rotate(-2*Math.atan2(q[1],q[3]));const w=.072*SCALE,h=.048*SCALE;ctx.fillStyle='#b8b9a1';ctx.shadowColor='#241d12';ctx.shadowBlur=4;ctx.fillRect(-w/2,-h/2,w,h);ctx.strokeStyle='#eee6c9';ctx.strokeRect(-w/2,-h/2,w,h);ctx.restore();}
  const q=frame?.rotation??{y:0,w:1},angle=-2*Math.atan2(q.y,q.w);ctx.save();ctx.rotate(angle);const step=tau/38;
  for(let i=0;i<38;i++){const a=i*step-Math.PI/2-step/2;ctx.beginPath();ctx.arc(0,0,.757*SCALE,a,a+step);ctx.arc(0,0,.565*SCALE,a+step,a,true);ctx.closePath();ctx.fillStyle=POCKETS[i]==='0'||POCKETS[i]==='00'?'#25705a':reds.has(+POCKETS[i])?'#a9403e':'#17221c';ctx.fill();ctx.strokeStyle='#c5b68d';ctx.lineWidth=2.5;ctx.stroke();if(frame?.result===POCKETS[i]){ctx.fillStyle='#ffe39966';ctx.fill();ctx.strokeStyle='#ffeca9';ctx.lineWidth=4;ctx.stroke();}ctx.save();ctx.rotate(i*step);ctx.font='700 28px Arial';ctx.fillStyle='#fff4d7';ctx.textAlign='center';ctx.shadowColor='#090b08';ctx.shadowBlur=2;ctx.fillText(POCKETS[i],0,-249);ctx.restore();}
- g=ctx.createRadialGradient(-65,-75,5,0,0,213);g.addColorStop(0,'#d2af6a');g.addColorStop(.5,'#b88a4b');g.addColorStop(1,'#8b6031');circle(214,g,'#e0c58a',3);
+ circle(214,'#59341f');if(woodReady)ctx.drawImage(centerWoodLayer,-215,-215);ctx.beginPath();ctx.arc(0,0,214,0,tau);ctx.strokeStyle='#e0c58a';ctx.lineWidth=3;ctx.stroke();
  for(let i=0;i<4;i++){ctx.save();ctx.rotate(i*Math.PI/2+.6);g=ctx.createLinearGradient(-10,0,10,0);g.addColorStop(0,'#646a5b');g.addColorStop(.5,'#efebd0');g.addColorStop(1,'#858b74');ctx.fillStyle=g;ctx.beginPath();ctx.roundRect(-8,-142,16,147,8);ctx.fill();ctx.restore();}circle(33,'#7e8570','#e2dfc2',3);circle(20,'#b7bba0','#efedcf',2);ctx.restore();
  if(frame){const p=frame.position,x=p.x*SCALE,z=p.z*SCALE,size=.023*SCALE;ctx.save();ctx.translate(x,z);ctx.shadowColor='#100c07';ctx.shadowBlur=5+Math.max(0,p.y)*16;ctx.shadowOffsetY=3;g=ctx.createRadialGradient(-3,-4,1,0,0,size);g.addColorStop(0,'#fff');g.addColorStop(.65,'#f0efd9');g.addColorStop(1,'#999b81');circle(size,g);ctx.restore();}
  ctx.restore();
