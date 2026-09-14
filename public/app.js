@@ -18,6 +18,7 @@ function accept(s){if(state&&s.serverTime<state.serverTime)return;if(sim&&state?
 async function action(a,extra={}){if(!state){$('lobby').showModal();return;}if(busy)return;busy=true;render();try{accept(await api('/api/rooms/'+code,{action:a,...extra,id:crypto.randomUUID()}));}catch(e){toast(e.message);}finally{busy=false;render();}}
 $('lobbyForm').onsubmit=async e=>{e.preventDefault();$('enter').disabled=true;$('lobbyError').textContent='';try{const join=$('code').value.trim().toUpperCase();accept(await api(join?'/api/rooms/'+join:'/api/rooms',{action:'join',name:$('name').value.trim(),id:crypto.randomUUID()}));const url=new URL(location.href);url.searchParams.set('room',code);history.replaceState(null,'',url);$('lobby').close();toast('Ви за столом. Граємо по черзі.');}catch(e){$('lobbyError').textContent=e.message;}finally{$('enter').disabled=false;}};
 $('code').value=code;$('code').oninput=()=>$('enter').firstChild.textContent=$('code').value.trim()?'Приєднатися ':'Створити кімнату ';$('code').oninput();
+$('away').onclick=()=>action('away',{enabled:!state?.players.find(p=>p.id===state.me)?.away});
 $('deflectors').onchange=e=>action('deflectors',{enabled:e.target.checked});
 $('spin').onclick=()=>action(state?.phase==='result'?'next':'spin');$('undo').onclick=()=>action('undo');$('clear').onclick=()=>action('clear');$('refill').onclick=()=>action('refill');$('pass').onclick=()=>action('pass');
 $('invite').onclick=async()=>{if(!state){$('lobby').showModal();return;}const url=new URL(location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Посилання скопійовано. Код: '+code);}catch{toast('Код кімнати: '+code+' · скопіюйте адресу з браузера');}};
@@ -26,13 +27,14 @@ function deltaTag(entry){const el=document.createElement('span');el.className='b
 let shownLedger=40;$('moreLedger').onclick=()=>{shownLedger+=40;render();};
 function render(){
  const me=state?.players.find(p=>p.id===state.me),actor=state?.players.find(p=>p.id===state.turn),mine=!!me&&me.id===actor?.id,open=state?.phase==='betting',last=state?.last.find(p=>p.id===actor?.id);
+ $('away').hidden=!me;$('away').disabled=busy;$('away').textContent=me?.away?'Я повернувся':'Відійшов';$('away').setAttribute('aria-pressed',String(!!me?.away));
  const bets=state?.phase==='result'?(last?.bets??[]):(actor?.bets??[]);
  const withDeflectors=(open?state?.deflectors:state?.spin?.deflectors??state?.deflectors)!==false;
  $('deflectors').checked=withDeflectors;$('deflectors').disabled=!mine||!open||busy||bets.length>0;
  $('deflectorMode').textContent=withDeflectors?'Увімкнено':'Вимкнено';
  $('deflectorHint').textContent=!open&&state?'Режим зафіксовано до наступного ходу':bets.length?'Щоб змінити режим, спершу зніміть ставки':mine?'Оберіть режим до першої ставки · для всіх у кімнаті':'Режим обирає гравець, який зараз ходить';
  if(state?.phase!=='spinning')draw(lastDrawnFrame);
- $('bankLabel').textContent=actor?'ФІШКИ · '+actor.name:'БАЛАНС';$('balance').textContent=fmt(actor?.balance??10000)+' фішок';$('balanceChange').replaceChildren();if(actor?.delta)$('balanceChange').append(deltaTag(actor.delta));
+ $('bankLabel').textContent=actor?'ФІШКИ · '+actor.name:'БАЛАНС';$('balance').textContent=fmt(actor?.balance??me?.balance??10000)+' фішок';$('balanceChange').replaceChildren();if(actor?.delta)$('balanceChange').append(deltaTag(actor.delta));
  $('betTotal').textContent=fmt(bets.reduce((a,b)=>a+b.amount,0));
  for(const b of document.querySelectorAll('.cell')){b.disabled=!mine||!open||busy;b.querySelector('.placed-chip')?.remove();b.classList.toggle('winner',state?.phase==='result'&&b.dataset.key==='n:'+state.result);const amount=bets.filter(x=>x.key===b.dataset.key).reduce((a,x)=>a+x.amount,0);if(amount){const c=document.createElement('span');c.className='placed-chip';c.textContent=amount>=1000?(amount/1000)+'k':amount;b.append(c);}}
  $('undo').disabled=$('clear').disabled=!mine||!open||busy||!bets.length;
@@ -41,8 +43,8 @@ function render(){
  $('pass').hidden=!mine||!open;$('pass').disabled=busy||bets.length>0;
  $('refill').hidden=!(me&&me.balance===0&&!me.bets.length&&state.phase!=='spinning');
  if(!state)return;
- $('roomLabel').textContent='Кімната '+code;$('round').textContent='Хід '+String(state.round).padStart(2,'0');$('phase').textContent=open?(mine?'ВАШ ХІД':'ХІД · '+actor.name):state.phase==='spinning'?'КРУТИТЬ · '+actor.name:'РЕЗУЛЬТАТ · '+actor.name;
- $('tableNote').textContent=mine&&open?'Оберіть фішку та поле ставки':`На столі ставки гравця ${actor.name}`;
+ $('roomLabel').textContent='Кімната '+code;$('round').textContent='Хід '+String(state.round).padStart(2,'0');$('phase').textContent=open?(mine?'ВАШ ХІД':actor?'ХІД · '+actor.name:'УСІ ВІДІЙШЛИ'):state.phase==='spinning'?'КРУТИТЬ · '+actor.name:'РЕЗУЛЬТАТ · '+actor.name;
+ $('tableNote').textContent=mine&&open?'Оберіть фішку та поле ставки':actor?`На столі ставки гравця ${actor.name}`:'Поверніться до гри, щоб продовжити';
  $('playerCount').textContent=state.players.length+' / 8';$('players').replaceChildren();
  for(const p of state.players){const el=document.createElement('div');el.className='player'+(p.id===state.turn?' current-player':'');const av=document.createElement('span');av.className='avatar';av.textContent=p.name.slice(0,1).toUpperCase();const info=document.createElement('div'),name=document.createElement('strong'),detail=document.createElement('small');name.textContent=p.name+(p.id===state.me?' · ви':'')+(p.id===state.turn?' · хід':'');detail.textContent=fmt(p.balance)+' фішок ';if(p.delta)detail.append(deltaTag(p.delta));info.append(name,detail);el.append(av,info);$('players').append(el);}
  $('history').replaceChildren();if(!state.history.length){const e=document.createElement('span');e.className='muted';e.textContent='Результат з’явиться після зупинки кульки';$('history').append(e);}for(const n of state.history){const e=document.createElement('span');e.className='history-number '+(n==='0'||n==='00'?'green':reds.has(+n)?'red':'');e.textContent=n;$('history').append(e);}
@@ -51,7 +53,7 @@ function render(){
  $('wheelStatus').textContent=state.result===null?'Крутку скасовано, ставки повернуто.':`${actor.name}: випало ${state.result} · за хід ${signed(last?.net??0)} фішок`;
  const key=state.round+':'+state.result;if(lastToast!==key){lastToast=key;toast($('wheelStatus').textContent);}
  $('turnHint').textContent='Хід автоматично перейде наступному гравцю.';
- }else if(open){$('wheelStatus').textContent=mine?'Ваш хід. Зробіть ставку й запустіть колесо.':`${actor.name} робить ставки. Ви спостерігаєте.`;$('turnHint').textContent='Ходи по черзі · до 2 хвилин на ставки';}
+ }else if(open){$('wheelStatus').textContent=mine?'Ваш хід. Зробіть ставку й запустіть колесо.':actor?`${actor.name} робить ставки. Ви спостерігаєте.`:'Усі відійшли. Гра продовжиться після повернення гравця.';$('turnHint').textContent=me?.away?'Ви відійшли — черга пропускає вас до повернення.':'Ходи по черзі · до 2 хвилин на ставки';}
  else $('turnHint').textContent='Результат визначиться після фізичної зупинки кульки';
 }
 const canvas=$('wheel'),ctx=canvas.getContext('2d'),tau=Math.PI*2,SCALE=380;

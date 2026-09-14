@@ -44,3 +44,5 @@ main{max-width:1800px}
 .deflector-switch input:focus-visible+.switch-track{outline:3px solid #f5e0a4;outline-offset:4px}
 .deflector-switch input:disabled+.switch-track{opacity:.5}
 .deflector-switch strong{font-size:14px;font-weight:400;color:#b5c4b8;margin-left:8px}
+
+.turn-strip{flex-wrap:wrap;gap:12px}.away-button{border:1px solid #a39060;border-radius:8px;padding:9px 16px;white-space:nowrap}.away-button[aria-pressed="true"]{background:#806838;color:#fff1cc}.away-player{border-style:dashed}.away-player .avatar{opacity:.55}

@@ -4,16 +4,16 @@ export function payout(key,result){const n=Number(result),zero=result==='0'||res
 export const validKey=k=>/^(n:(00|[0-9]|[12][0-9]|3[0-6])|red|black|even|odd|low|high|dozen:[123]|col:[123])$/.test(k);
 export function freshRoom(code){return {code,deflectors:true,players:[],host:null,turn:null,round:1,phase:'betting',result:null,history:[],last:[],requests:[],ledger:[],turnStarted:Date.now()};}
 function change(s,p,amount,reason,now){if(!amount)return;p.balance+=amount;const e={id:crypto.randomUUID(),player:p.id,name:p.name,amount,balance:p.balance,reason,round:s.round,at:now};s.ledger.push(e);p.delta=e;}
-function advance(s,now){const index=s.players.findIndex(p=>p.id===s.turn);s.turn=s.players[(index+1)%s.players.length]?.id;s.phase='betting';s.result=null;s.round++;s.turnStarted=now;s.advanceAt=0;}
+function advance(s,now){const index=s.players.findIndex(p=>p.id===s.turn);s.turn=null;for(let offset=1;offset<=s.players.length;offset++){const next=s.players[(index+offset)%s.players.length];if(!next.away){s.turn=next.id;break;}}s.phase='betting';s.result=null;s.round++;s.turnStarted=now;s.advanceAt=0;}
 export function tick(s,now=Date.now()){
  s.ledger??=[];
- if(!s.turn){s.turn=s.host??s.players[0]?.id;s.turnStarted=now;}
+ if(!s.turn&&s.phase==='betting'){s.turn=s.players.find(p=>!p.away)?.id??null;s.turnStarted=now;}
  // Safely migrate unfinished scripted rounds without announcing a fabricated number.
  if(s.phase==='spinning'&&![ENGINE_VERSION,'rapier-0.19.3-roulette-v1'].includes(s.spin?.engine)){for(const p of s.players){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Повернення після оновлення',now);p.bets=[];}s.spin=null;s.phase='betting';s.result=null;}
  if(s.phase==='betting')for(const p of s.players)if(p.id!==s.turn&&p.bets.length){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Повернення: гра по черзі',now);p.bets=[];}
  if(s.phase==='spinning'&&now>s.spin.startedAt+100000){for(const p of s.players){change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Крутку перервано: повернення',now);p.bets=[];}s.phase='result';s.result=null;s.last=[];s.advanceAt=now+5000;}
  if(s.phase==='result'&&s.advanceAt&&now>=s.advanceAt)advance(s,now);
- if(s.phase==='betting'&&now-s.turnStarted>120000&&s.players.length>1){const p=s.players.find(p=>p.id===s.turn);change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Час ходу вичерпано: повернення',now);p.bets=[];advance(s,now);}
+ if(s.phase==='betting'&&s.turn&&now-s.turnStarted>120000&&s.players.length>1){const p=s.players.find(p=>p.id===s.turn);change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Час ходу вичерпано: повернення',now);p.bets=[];advance(s,now);}
 }
 function validateProof(s,proof,now){
  if((proof?.deflectors!==false)!==(s.spin.deflectors!==false))throw Error('Режим колеса змінився. Оновіть сторінку.');
@@ -29,12 +29,18 @@ export function act(s,token,body,now=Date.now()){
  tick(s,now);if(body.id&&s.requests.includes(body.id))return s;
  let p=s.players.find(p=>p.token===token);
  if(body.action==='join'){
-  if(!p){if(s.players.length>=8)throw Error('У кімнаті вже 8 гравців.');const name=String(body.name||'').trim().slice(0,24);if(!name)throw Error('Введіть ім’я.');p={id:crypto.randomUUID(),token,name,balance:0,bets:[]};s.players.push(p);s.host??=p.id;s.turn??=p.id;change(s,p,10000,'Стартові фішки',now);}
+  if(!p){if(s.players.length>=8)throw Error('У кімнаті вже 8 гравців.');const name=String(body.name||'').trim().slice(0,24);if(!name)throw Error('Введіть ім’я.');p={id:crypto.randomUUID(),token,name,away:false,balance:0,bets:[]};s.players.push(p);s.host??=p.id;if(!s.turn&&s.phase==='betting'){s.turn=p.id;s.turnStarted=now;}change(s,p,10000,'Стартові фішки',now);}
  }else{
  if(!p)throw Error('Спершу увійдіть до кімнати.');
  if(['bet','undo','clear','spin','pass','deflectors'].includes(body.action)&&p.id!==s.turn)throw Error('Зараз хід іншого гравця. Ви можете спостерігати.');
  if(['bet','undo','clear','spin','pass','deflectors'].includes(body.action)&&s.phase!=='betting')throw Error('Дочекайтеся завершення крутки.');
- if(body.action==='deflectors'){
+ if(body.action==='away'){
+ if(typeof body.enabled!=='boolean')throw Error('Некоректний статус.');
+ p.away=body.enabled;
+ if(p.away&&p.id===s.turn&&s.phase==='betting'){
+ change(s,p,p.bets.reduce((sum,b)=>sum+b.amount,0),'Відійшов: повернення ставок',now);p.bets=[];advance(s,now);
+ }else if(!p.away&&!s.turn&&s.phase==='betting'){s.turn=p.id;s.turnStarted=now;}
+ }else if(body.action==='deflectors'){
  if(typeof body.enabled!=='boolean')throw Error('Некоректний режим.');
  if(s.players.some(player=>player.bets.length))throw Error('Змініть режим до першої ставки.');
  s.deflectors=body.enabled;
