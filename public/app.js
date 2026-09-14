@@ -18,6 +18,7 @@ function accept(s){if(state&&s.serverTime<state.serverTime)return;if(sim&&state?
 async function action(a,extra={}){if(!state){$('lobby').showModal();return;}if(busy)return;busy=true;render();try{accept(await api('/api/rooms/'+code,{action:a,...extra,id:crypto.randomUUID()}));}catch(e){toast(e.message);}finally{busy=false;render();}}
 $('lobbyForm').onsubmit=async e=>{e.preventDefault();$('enter').disabled=true;$('lobbyError').textContent='';try{const join=$('code').value.trim().toUpperCase();accept(await api(join?'/api/rooms/'+join:'/api/rooms',{action:'join',name:$('name').value.trim(),id:crypto.randomUUID()}));const url=new URL(location.href);url.searchParams.set('room',code);history.replaceState(null,'',url);$('lobby').close();toast('Ви за столом. Граємо по черзі.');}catch(e){$('lobbyError').textContent=e.message;}finally{$('enter').disabled=false;}};
 $('code').value=code;$('code').oninput=()=>$('enter').firstChild.textContent=$('code').value.trim()?'Приєднатися ':'Створити кімнату ';$('code').oninput();
+$('deflectors').onchange=e=>action('deflectors',{enabled:e.target.checked});
 $('spin').onclick=()=>action(state?.phase==='result'?'next':'spin');$('undo').onclick=()=>action('undo');$('clear').onclick=()=>action('clear');$('refill').onclick=()=>action('refill');$('pass').onclick=()=>action('pass');
 $('invite').onclick=async()=>{if(!state){$('lobby').showModal();return;}const url=new URL(location.href);url.searchParams.set('room',code);try{await navigator.clipboard.writeText(url.href);toast('Посилання скопійовано. Код: '+code);}catch{toast('Код кімнати: '+code+' · скопіюйте адресу з браузера');}};
 $('rulesBtn').onclick=()=>$('rules').showModal();$('closeRules').onclick=()=>$('rules').close();$('lobby').addEventListener('cancel',e=>{if(!state)e.preventDefault();});
@@ -26,6 +27,11 @@ let shownLedger=40;$('moreLedger').onclick=()=>{shownLedger+=40;render();};
 function render(){
  const me=state?.players.find(p=>p.id===state.me),actor=state?.players.find(p=>p.id===state.turn),mine=!!me&&me.id===actor?.id,open=state?.phase==='betting',last=state?.last.find(p=>p.id===actor?.id);
  const bets=state?.phase==='result'?(last?.bets??[]):(actor?.bets??[]);
+ const withDeflectors=(open?state?.deflectors:state?.spin?.deflectors??state?.deflectors)!==false;
+ $('deflectors').checked=withDeflectors;$('deflectors').disabled=!mine||!open||busy||bets.length>0;
+ $('deflectorMode').textContent=withDeflectors?'Увімкнено':'Вимкнено';
+ $('deflectorHint').textContent=!open&&state?'Режим зафіксовано до наступного ходу':bets.length?'Щоб змінити режим, спершу зніміть ставки':mine?'Оберіть режим до першої ставки · для всіх у кімнаті':'Режим обирає гравець, який зараз ходить';
+ if(state?.phase!=='spinning')draw(lastDrawnFrame);
  $('bankLabel').textContent=actor?'ФІШКИ · '+actor.name:'БАЛАНС';$('balance').textContent=fmt(actor?.balance??10000)+' фішок';$('balanceChange').replaceChildren();if(actor?.delta)$('balanceChange').append(deltaTag(actor.delta));
  $('betTotal').textContent=fmt(bets.reduce((a,b)=>a+b.amount,0));
  for(const b of document.querySelectorAll('.cell')){b.disabled=!mine||!open||busy;b.querySelector('.placed-chip')?.remove();b.classList.toggle('winner',state?.phase==='result'&&b.dataset.key==='n:'+state.result);const amount=bets.filter(x=>x.key===b.dataset.key).reduce((a,x)=>a+x.amount,0);if(amount){const c=document.createElement('span');c.className='placed-chip';c.textContent=amount>=1000?(amount/1000)+'k':amount;b.append(c);}}
@@ -79,7 +85,7 @@ function draw(frame){
  g=ctx.createRadialGradient(0,0,287,0,0,407);g.addColorStop(0,'#6b4a2b');g.addColorStop(.4,'#b89253');g.addColorStop(.88,'#8f6837');g.addColorStop(1,'#49351f');circle(408,g,'#b7a67b',3);if(woodReady)ctx.drawImage(woodLayer,-450,-450);
  for(const r of [395,386,294]){ctx.beginPath();ctx.arc(0,0,r,0,tau);ctx.strokeStyle='#d2b57e66';ctx.lineWidth=3;ctx.stroke();}
  // These are the same fixed deflectors used by the physics world.
- for(const d of GEOMETRY.deflectors){ctx.save();ctx.translate(d.position[0]*SCALE,d.position[2]*SCALE);const q=d.rotation;ctx.rotate(-2*Math.atan2(q[1],q[3]));const w=.072*SCALE,h=.048*SCALE;ctx.fillStyle='#b8b9a1';ctx.shadowColor='#241d12';ctx.shadowBlur=4;ctx.fillRect(-w/2,-h/2,w,h);ctx.strokeStyle='#eee6c9';ctx.strokeRect(-w/2,-h/2,w,h);ctx.restore();}
+ for(const d of ((state?.phase==='betting'?state?.deflectors:state?.spin?.deflectors??state?.deflectors)!==false)?GEOMETRY.deflectors:[]){ctx.save();ctx.translate(d.position[0]*SCALE,d.position[2]*SCALE);const q=d.rotation;ctx.rotate(-2*Math.atan2(q[1],q[3]));const w=.072*SCALE,h=.048*SCALE;ctx.fillStyle='#b8b9a1';ctx.shadowColor='#241d12';ctx.shadowBlur=4;ctx.fillRect(-w/2,-h/2,w,h);ctx.strokeStyle='#eee6c9';ctx.strokeRect(-w/2,-h/2,w,h);ctx.restore();}
  const q=frame?.rotation??{y:0,w:1},angle=-2*Math.atan2(q.y,q.w);ctx.save();ctx.rotate(angle);const step=tau/38;
  for(let i=0;i<38;i++){const a=i*step-Math.PI/2-step/2;ctx.beginPath();ctx.arc(0,0,.757*SCALE,a,a+step);ctx.arc(0,0,.565*SCALE,a+step,a,true);ctx.closePath();ctx.fillStyle=POCKETS[i]==='0'||POCKETS[i]==='00'?'#25705a':reds.has(+POCKETS[i])?'#a9403e':'#17221c';ctx.fill();ctx.strokeStyle='#c5b68d';ctx.lineWidth=2.5;ctx.stroke();if(frame?.result===POCKETS[i]){ctx.fillStyle='#ffe39966';ctx.fill();ctx.strokeStyle='#ffeca9';ctx.lineWidth=4;ctx.stroke();}ctx.save();ctx.rotate(i*step);ctx.font='700 28px Arial';ctx.fillStyle='#fff4d7';ctx.textAlign='center';ctx.shadowColor='#090b08';ctx.shadowBlur=2;ctx.fillText(POCKETS[i],0,-249);ctx.restore();}
  circle(214,'#59341f');if(woodReady)ctx.drawImage(centerWoodLayer,-215,-215);ctx.beginPath();ctx.arc(0,0,214,0,tau);ctx.strokeStyle='#e0c58a';ctx.lineWidth=3;ctx.stroke();

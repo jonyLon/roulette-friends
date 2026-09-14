@@ -2,7 +2,7 @@ import { POCKETS, DT, ENGINE_VERSION, pocketAt } from '../public/physics-shared.
 export const RED=[1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
 export function payout(key,result){const n=Number(result),zero=result==='0'||result==='00';if(key.startsWith('n:'))return key.slice(2)===result?36:0;if(zero)return 0;if(key==='red')return RED.includes(n)?2:0;if(key==='black')return RED.includes(n)?0:2;if(key==='even')return n%2===0?2:0;if(key==='odd')return n%2?2:0;if(key==='low')return n<=18?2:0;if(key==='high')return n>=19?2:0;if(key.startsWith('dozen:'))return Math.ceil(n/12)===Number(key.slice(6))?3:0;if(key.startsWith('col:'))return (n-1)%3+1===Number(key.slice(4))?3:0;return 0;}
 export const validKey=k=>/^(n:(00|[0-9]|[12][0-9]|3[0-6])|red|black|even|odd|low|high|dozen:[123]|col:[123])$/.test(k);
-export function freshRoom(code){return {code,players:[],host:null,turn:null,round:1,phase:'betting',result:null,history:[],last:[],requests:[],ledger:[],turnStarted:Date.now()};}
+export function freshRoom(code){return {code,deflectors:true,players:[],host:null,turn:null,round:1,phase:'betting',result:null,history:[],last:[],requests:[],ledger:[],turnStarted:Date.now()};}
 function change(s,p,amount,reason,now){if(!amount)return;p.balance+=amount;const e={id:crypto.randomUUID(),player:p.id,name:p.name,amount,balance:p.balance,reason,round:s.round,at:now};s.ledger.push(e);p.delta=e;}
 function advance(s,now){const index=s.players.findIndex(p=>p.id===s.turn);s.turn=s.players[(index+1)%s.players.length]?.id;s.phase='betting';s.result=null;s.round++;s.turnStarted=now;s.advanceAt=0;}
 export function tick(s,now=Date.now()){
@@ -16,6 +16,7 @@ export function tick(s,now=Date.now()){
  if(s.phase==='betting'&&now-s.turnStarted>120000&&s.players.length>1){const p=s.players.find(p=>p.id===s.turn);change(s,p,p.bets.reduce((a,b)=>a+b.amount,0),'Час ходу вичерпано: повернення',now);p.bets=[];advance(s,now);}
 }
 function validateProof(s,proof,now){
+ if((proof?.deflectors!==false)!==(s.spin.deflectors!==false))throw Error('Режим колеса змінився. Оновіть сторінку.');
  if(![ENGINE_VERSION,'rapier-0.19.3-roulette-v1'].includes(proof?.engine)||!Number.isInteger(proof.step)||proof.step<120||proof.step>9000||(!Number.isInteger(proof.stable)||proof.stable<120))throw Error('Кулька ще не зупинилась.');
  if(now<s.spin.startedAt+proof.step*DT*1000-500)throw Error('Фізична крутка ще триває.');
  for(const k of ['ballSpeed','ballAngularSpeed','wheelSpeed'])if(!Number.isFinite(proof[k])||proof[k]<0)throw Error('Некоректна швидкість.');
@@ -31,14 +32,18 @@ export function act(s,token,body,now=Date.now()){
   if(!p){if(s.players.length>=8)throw Error('У кімнаті вже 8 гравців.');const name=String(body.name||'').trim().slice(0,24);if(!name)throw Error('Введіть ім’я.');p={id:crypto.randomUUID(),token,name,balance:0,bets:[]};s.players.push(p);s.host??=p.id;s.turn??=p.id;change(s,p,10000,'Стартові фішки',now);}
  }else{
  if(!p)throw Error('Спершу увійдіть до кімнати.');
- if(['bet','undo','clear','spin','pass'].includes(body.action)&&p.id!==s.turn)throw Error('Зараз хід іншого гравця. Ви можете спостерігати.');
- if(['bet','undo','clear','spin','pass'].includes(body.action)&&s.phase!=='betting')throw Error('Дочекайтеся завершення крутки.');
- if(body.action==='bet'){
+ if(['bet','undo','clear','spin','pass','deflectors'].includes(body.action)&&p.id!==s.turn)throw Error('Зараз хід іншого гравця. Ви можете спостерігати.');
+ if(['bet','undo','clear','spin','pass','deflectors'].includes(body.action)&&s.phase!=='betting')throw Error('Дочекайтеся завершення крутки.');
+ if(body.action==='deflectors'){
+ if(typeof body.enabled!=='boolean')throw Error('Некоректний режим.');
+ if(s.players.some(player=>player.bets.length))throw Error('Змініть режим до першої ставки.');
+ s.deflectors=body.enabled;
+ }else if(body.action==='bet'){
  if(!validKey(body.key)||![10,50,100,500,1000].includes(body.amount))throw Error('Некоректна ставка.');if(p.balance<body.amount)throw Error('Недостатньо фішок.');if(p.bets.length>=100)throw Error('Ліміт — 100 ставок.');change(s,p,-body.amount,'Ставка '+body.key,now);p.bets.push({key:body.key,amount:body.amount});
  }else if(body.action==='undo'||body.action==='clear'){const removed=body.action==='undo'?p.bets.splice(-1):p.bets.splice(0);change(s,p,removed.reduce((a,b)=>a+b.amount,0),'Скасування ставки',now);
  }else if(body.action==='spin'){
  if(!p.bets.length)throw Error('Спершу зробіть ставку.');const random=new Uint32Array(3);crypto.getRandomValues(random);
- s.spin={wheelRotation:s.spin?.final?.rotation??{x:0,y:0,z:0,w:1},id:crypto.randomUUID(),engine:ENGINE_VERSION,startedAt:now+500,ballSpeed:Math.fround(6.8+(random[0]%1001)/1000),wheelSpeed:Math.fround(.95+(random[1]%601)/1000),radialSpeed:Math.fround((random[2]%21-10)/1000)};
+ s.spin={deflectors:s.deflectors!==false,wheelRotation:s.spin?.final?.rotation??{x:0,y:0,z:0,w:1},id:crypto.randomUUID(),engine:ENGINE_VERSION,startedAt:now+500,ballSpeed:Math.fround(6.8+(random[0]%1001)/1000),wheelSpeed:Math.fround(.95+(random[1]%601)/1000),radialSpeed:Math.fround((random[2]%21-10)/1000)};
  s.phase='spinning';s.result=null;s.last=[];
  }else if(body.action==='finish'){
  if(body.spinId!==s.spin?.id)throw Error('Це інша крутка.');

@@ -33,3 +33,14 @@ main{max-width:1800px}
  .board{grid-template-rows:repeat(6,23px)}
  .cell{font-size:17px}
 }
+
+.wheel-options{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 18px;color:#b5c4b8;font-size:14px}
+.deflector-switch{display:flex;align-items:center;gap:12px;cursor:pointer;color:#f0e4c6;font-size:16px;position:relative}
+.deflector-switch input{position:absolute;opacity:0;width:48px;height:28px;margin:0}
+.switch-track{width:48px;height:28px;border-radius:20px;background:#38443c;border:1px solid #7e8875;position:relative;transition:background .2s;flex-shrink:0}
+.switch-track::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#ece2c7;transition:transform .2s}
+.deflector-switch input:checked+.switch-track{background:#96783f;border-color:#dac38b}
+.deflector-switch input:checked+.switch-track::after{transform:translateX(20px)}
+.deflector-switch input:focus-visible+.switch-track{outline:3px solid #f5e0a4;outline-offset:4px}
+.deflector-switch input:disabled+.switch-track{opacity:.5}
+.deflector-switch strong{font-size:14px;font-weight:400;color:#b5c4b8;margin-left:8px}
